@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Contour plot · Temperatura media mensual en España, 1940–2025</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  .viz-root {
+    color-scheme: light;
+    --surface-0: #f4f3f0;
+    --surface-1: #fcfcfb;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #77766f;
+    --grid: #e3e2dd;
+    --border: #d6d5cf;
+    --accent: #2a78d6;
+    --iso: #0b0b0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-0: #121211;
+      --surface-1: #1a1a19;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #96958c;
+      --grid: #2e2e2b;
+      --border: #3a3a37;
+      --accent: #3987e5;
+      --iso: #f0efec;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body.viz-root {
+    background: var(--surface-0);
+    color: var(--text-primary);
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.45;
+  }
+  .card {
+    max-width: 1080px; margin: 24px auto; padding: 28px 32px 22px;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin: 0 0 6px; }
+  h1 { font-size: 24px; line-height: 1.2; margin: 0 0 8px; font-weight: 650; letter-spacing: -0.01em; }
+  .dek { color: var(--text-secondary); margin: 0 0 18px; max-width: 760px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 18px 28px; align-items: center; margin-bottom: 10px; font-size: 14px; color: var(--text-secondary); }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 13px; padding: 6px 12px; border: 0; background: transparent; color: var(--text-secondary); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); }
+  .ctl { display: inline-flex; align-items: center; gap: 10px; }
+  .ctl output { font-variant-numeric: tabular-nums; color: var(--text-primary); font-weight: 600; min-width: 48px; }
+  input[type=range] { accent-color: var(--text-primary); width: 160px; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 26px; margin: 4px 0 6px; font-size: 12.5px; color: var(--text-secondary); }
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .axis text { fill: var(--text-muted); font-size: 12px; font-family: inherit; }
+  .axis path, .axis line { stroke: var(--border); }
+  .axis-title { fill: var(--text-secondary); font-size: 12px; }
+  .tooltip {
+    position: absolute; pointer-events: none; opacity: 0; transition: opacity .08s;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap;
+  }
+  .tooltip .t-head { color: var(--text-secondary); font-size: 12px; }
+  .tooltip .t-val { font-weight: 650; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .notes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 32px; margin-top: 14px; font-size: 13.5px; color: var(--text-secondary); }
+  .notes b { color: var(--text-primary); font-weight: 600; }
+  footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--grid); font-size: 12px; color: var(--text-muted); }
+  footer a { color: inherit; }
+  details { margin-top: 12px; font-size: 13px; color: var(--text-secondary); }
+  summary { cursor: pointer; }
+  table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; font-size: 12px; }
+  th, td { padding: 3px 7px; text-align: right; border-bottom: 1px solid var(--grid); }
+  th { color: var(--text-muted); font-weight: 500; }
+  .table-scroll { overflow-x: auto; }
+  @media (max-width: 720px) { .card { padding: 18px; margin: 0; border-radius: 0; } .notes { grid-template-columns: 1fr; } h1 { font-size: 20px; } }
+</style>
+</head>
+<body class="viz-root">
+<main class="card">
+  <p class="eyebrow">Contour plot · isotermas</p>
+  <h1>El verano español se ensancha: temperatura media de cada mes en España, 1940–2025</h1>
+  <p class="dek">Cada curva une los puntos con la misma temperatura media (una <em>isoterma</em>). Eje horizontal: el año; eje vertical: el mes. Si las curvas cálidas se abren hacia la derecha, los meses de calor ocupan cada vez más parte del año.</p>
+
+  <div class="controls">
+    <span class="ctl">Agregación
+      <span class="seg" role="group" aria-label="Agregación temporal">
+        <button type="button" data-mode="moving" aria-pressed="true">Media móvil 11 años</button>
+        <button type="button" data-mode="decade" aria-pressed="false">Media por década</button>
+        <button type="button" data-mode="year" aria-pressed="false">Año a año (sin agregar)</button>
+      </span>
+    </span>
+    <label class="ctl">Resaltar isoterma
+      <input id="iso" type="range" min="10" max="24" step="1" value="20">
+      <output id="isoOut">20 °C</output>
+    </label>
+  </div>
+
+  <div class="legend" id="legend"></div>
+  <div class="chart-wrap" id="wrap">
+    <svg id="chart" role="img" aria-labelledby="chartDesc"><desc id="chartDesc">Contour plot de la temperatura media mensual en España por mes y década desde 1940. Las bandas de color van de claro (frío) a oscuro (calor); la línea gruesa marca la isoterma seleccionada.</desc></svg>
+    <div class="tooltip" id="tip"></div>
+  </div>
+
+  <div class="notes" id="notes"><div><b>Cómo leerlo.</b> Cada banda de color agrupa 2 °C. La línea negra es la isoterma elegida (por defecto, 20 °C): dentro de ella están los meses con una media más cálida que ese valor. Donde las curvas se abren hacia la derecha, ese nivel de calor ocupa más meses del año.</div><div><b>Qué muestra.</b> Hasta finales de los años 90, solo julio y agosto superaban los 20 °C de media; desde entonces, junio también. El núcleo de más de 24 °C en pleno verano no aparece hasta la última década. Los años 70 fueron los más frescos de la serie (12,7 °C de media anual) y los 2020, los más cálidos (15,0 °C).</div></div>
+
+  <details>
+    <summary>Ver la tabla de datos (media por década, °C)</summary>
+    <div class="table-scroll" id="table"></div>
+  </details>
+
+  <footer>
+    Datos: Our World in Data, «Average monthly surface temperature» (temperatura del aire a 2 m, media ponderada del territorio de España), a partir de Copernicus Climate Change Service, reanálisis ERA5. CC BY 4.0.
+    <a href="https://ourworldindata.org/grapher/average-monthly-surface-temperature">Enlace al conjunto de datos</a>.
+    Por defecto, media móvil centrada de 11 años para cada mes (también por década o año a año); interpolación bilineal entre celdas y trazado de isolíneas con d3-contour (algoritmo marching squares).
+    La última década (2020–2025) es incompleta (6 años). Visualización: Chaymae Aouraghe El Founti · PEC 2 Visualización de datos (UOC).
+  </footer>
+</main>
+
+<script>
+const RAW = {"years":[1940,1941,1942,1943,1944,1945,1946,1947,1948,1949,1950,1951,1952,1953,1954,1955,1956,1957,1958,1959,1960,1961,1962,1963,1964,1965,1966,1967,1968,1969,1970,1971,1972,1973,1974,1975,1976,1977,1978,1979,1980,1981,1982,1983,1984,1985,1986,1987,1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023,2024,2025],"t":[[3.46,6.98,9.59,10.73,14.96,17.95,21.29,23.19,17.89,12.09,7.62,2.63],[2.91,6.19,7.63,9.41,12.52,19.88,23.98,21.63,19.34,13.79,8.02,4.81],[3.43,2.95,9.35,11.22,14.9,20.14,22.67,22.62,18.79,13.81,8.18,5.66],[6.39,5.56,7.73,12.48,16.19,21.29,22.43,23.11,18.65,13.47,6.83,4.73],[4.77,2.83,7.12,12.27,15.9,18.8,22.29,23.25,18.84,11.88,8.94,4.57],[1.45,7.02,9.34,15.26,16.35,20.92,22.9,21.19,20.42,14.88,9.93,6.72],[3.58,6.37,7.81,10.41,12.01,18.18,23.02,22.17,19.6,15.13,8.62,4.63],[4.16,6.2,10.0,12.88,15.14,21.19,23.13,22.55,18.59,14.26,10.69,4.55],[6.45,7.18,10.39,10.4,13.0,18.51,20.97,21.68,19.26,13.95,10.42,7.01],[4.77,6.48,7.44,13.01,13.23,19.2,23.01,23.48,18.53,14.27,8.96,5.78],[4.93,7.26,9.31,10.94,14.39,20.28,24.05,21.99,19.1,14.71,10.85,4.03],[5.17,5.23,8.22,10.61,11.71,18.74,21.96,20.68,18.92,12.15,9.12,6.84],[3.02,5.41,10.9,11.18,14.69,20.12,21.75,21.18,16.28,14.68,8.94,5.8],[3.08,4.46,7.9,11.19,16.97,17.52,21.85,23.0,18.6,12.98,9.75,8.1],[3.18,4.61,8.46,9.73,14.45,18.14,21.46,20.54,19.26,15.44,10.67,6.15],[8.41,6.48,7.07,12.62,16.72,19.14,22.43,22.32,18.73,13.56,8.87,8.15],[6.18,0.87,8.22,9.83,14.38,17.84,21.03,20.64,18.08,13.46,6.42,4.27],[3.28,8.26,11.26,10.22,13.22,17.2,21.84,22.1,19.33,13.12,7.87,4.25],[5.35,8.19,8.54,9.87,15.69,17.6,21.11,21.33,20.34,13.43,8.48,7.53],[7.07,6.38,9.51,11.14,13.74,18.46,22.52,21.09,17.91,13.56,8.67,6.88],[5.58,7.29,9.5,11.53,15.67,19.79,21.17,20.63,18.11,11.75,9.48,4.5],[4.82,9.15,10.91,12.71,16.48,18.92,21.74,22.01,19.76,13.59,8.78,7.73],[6.3,5.83,7.81,10.73,14.48,18.48,21.99,23.16,20.27,14.94,6.52,4.7],[4.69,3.69,8.26,10.44,13.92,17.88,21.98,20.46,16.8,14.87,9.81,4.22],[4.25,6.7,7.94,10.24,17.81,18.83,22.42,21.83,21.13,12.51,8.7,4.3],[4.56,3.91,8.41,10.97,16.49,20.13,20.91,21.57,16.39,13.84,8.34,6.59],[7.83,8.56,7.77,11.35,15.35,18.05,21.02,21.8,19.91,12.49,6.02,5.76],[4.84,6.73,10.22,10.14,13.46,17.49,23.19,21.79,18.43,15.7,9.55,4.46],[5.66,6.92,8.12,11.0,14.06,19.14,22.23,21.17,18.43,16.64,9.83,6.65],[6.65,4.94,8.51,10.94,14.04,17.31,22.58,21.6,16.02,14.17,8.22,5.08],[7.4,6.74,7.09,11.08,14.66,18.66,22.46,21.51,20.54,13.21,11.31,3.39],[4.79,6.84,5.97,10.94,12.78,16.82,21.5,21.03,18.82,15.62,6.94,6.24],[4.34,6.56,8.31,10.6,13.13,17.21,21.02,20.06,15.83,12.68,9.94,5.82],[5.06,5.56,7.7,10.77,15.16,18.27,21.24,22.88,18.88,13.12,9.36,5.21],[7.12,6.15,8.1,9.52,15.0,18.29,21.91,21.53,17.83,10.93,9.22,6.46],[6.83,7.63,7.08,10.62,12.76,17.92,22.86,21.95,17.27,13.86,8.78,4.65],[4.85,7.11,8.81,9.59,15.34,20.15,21.77,21.3,17.03,12.09,7.24,7.27],[5.98,8.33,9.84,11.93,13.1,16.32,19.22,19.3,19.18,14.53,8.91,8.27],[5.0,7.58,8.97,9.46,12.4,15.56,21.02,21.45,19.97,13.56,8.75,8.12],[6.86,7.15,7.82,9.75,14.64,19.18,22.01,21.54,18.49,13.2,8.43,6.91],[5.73,7.99,8.87,10.67,13.23,18.11,20.77,22.99,20.52,13.87,8.53,4.61],[5.2,5.75,11.13,10.7,13.87,20.21,21.53,21.88,19.43,14.9,11.03,8.17],[7.75,7.52,9.3,11.68,15.28,20.06,22.45,21.72,18.87,13.3,9.23,6.14],[5.45,5.01,10.34,10.77,13.31,20.07,22.5,20.8,20.84,15.56,12.0,6.85],[6.03,5.74,6.69,12.98,10.75,17.83,22.86,20.93,18.41,13.62,10.05,6.69],[3.72,8.72,7.88,12.14,13.07,19.34,23.09,22.09,21.31,15.89,8.67,6.81],[5.68,5.84,8.94,8.13,16.44,19.34,22.75,21.75,19.45,15.03,9.34,6.29],[4.88,6.88,10.16,12.85,14.99,19.41,21.6,23.03,21.55,13.67,9.22,8.37],[7.8,6.89,9.83,11.52,14.47,17.13,21.7,22.7,19.57,15.1,10.18,5.66],[5.35,7.68,10.92,9.81,16.34,19.85,24.13,23.27,18.45,15.55,11.36,9.82],[5.99,10.31,10.66,10.36,16.33,19.92,23.63,23.23,20.57,14.42,8.88,4.94],[5.32,5.63,9.77,10.35,14.0,19.8,23.01,24.18,20.29,12.2,8.99,6.72],[3.89,6.61,9.58,12.21,16.69,15.85,22.57,22.8,18.87,12.32,10.7,7.25],[5.5,6.43,9.33,10.91,14.22,19.26,22.17,22.36,16.97,11.71,8.59,7.33],[6.05,7.17,11.73,10.86,15.7,20.29,24.4,23.77,17.46,14.7,11.34,7.74],[7.04,9.09,10.25,12.73,17.05,19.61,23.6,22.94,17.34,16.79,11.73,8.55],[8.19,6.05,9.41,12.51,14.8,20.61,22.7,21.41,17.25,14.24,10.0,7.54],[6.58,9.64,12.68,14.15,15.75,18.36,21.21,22.43,20.23,16.51,10.5,7.72],[7.48,9.24,11.7,10.67,14.62,20.19,23.27,23.45,19.41,13.83,9.69,5.86],[6.07,6.78,9.82,12.6,16.9,20.09,23.57,23.19,19.14,14.71,7.78,6.88],[4.32,9.79,10.7,10.64,16.51,20.99,22.3,22.77,19.9,14.12,9.16,8.33],[7.64,7.8,12.01,12.45,15.61,21.58,22.13,23.43,18.99,16.14,7.99,4.7],[7.33,8.66,10.72,12.3,14.73,20.73,22.36,21.44,18.46,14.86,10.63,8.9],[5.9,6.32,10.99,12.32,16.71,22.77,23.55,24.83,19.89,13.67,10.42,7.06],[7.74,7.3,8.74,11.05,14.11,21.89,22.95,22.7,20.26,15.3,8.65,6.67],[4.78,4.54,9.73,12.62,17.16,22.38,23.72,22.92,18.94,15.25,8.62,5.8],[5.08,6.0,10.58,13.42,17.67,21.13,24.84,22.43,20.33,16.62,11.96,6.29],[6.45,9.06,9.31,12.11,15.67,19.34,22.67,21.86,19.08,14.38,8.71,6.22],[7.64,8.96,9.75,12.59,14.57,19.53,22.43,22.76,18.33,13.93,7.74,5.91],[5.52,7.12,10.42,11.01,17.01,21.29,23.51,23.81,19.21,16.37,11.25,6.99],[5.87,6.68,8.76,12.96,14.63,19.06,24.16,23.48,19.29,13.72,8.56,6.48],[6.38,7.76,9.44,14.83,17.31,20.23,22.12,23.36,20.74,16.27,10.97,7.21],[6.24,4.9,10.52,10.55,17.36,21.64,22.82,24.15,19.64,14.74,9.94,7.45],[6.94,6.37,9.25,11.71,13.47,18.8,24.01,23.37,20.18,16.2,9.02,6.24],[7.87,7.52,10.04,14.4,16.14,20.17,22.21,22.68,20.32,17.14,11.17,6.54],[5.69,6.04,10.35,13.4,18.01,21.51,25.6,23.25,18.52,15.11,11.25,9.02],[8.46,7.98,8.61,11.65,15.13,20.82,24.42,24.04,20.76,16.01,9.61,7.64],[5.5,8.89,10.87,13.79,17.86,23.04,23.96,23.8,19.35,17.26,9.74,6.55],[7.13,5.7,8.58,12.35,15.16,19.82,23.08,24.18,21.41,14.55,10.03,8.17],[5.86,8.41,10.84,11.57,16.5,20.49,24.07,23.62,19.76,15.86,9.49,8.54],[6.51,10.23,10.2,12.72,17.79,19.63,24.6,23.35,19.56,13.57,11.22,7.15],[5.31,9.59,10.0,12.07,15.98,20.02,23.06,23.53,19.61,15.39,8.37,8.56],[6.11,8.79,9.45,11.38,18.41,22.05,25.78,24.71,19.82,17.78,11.52,9.64],[6.03,6.57,11.79,15.23,16.29,21.15,24.51,24.9,20.1,17.3,11.56,7.41],[8.43,9.6,10.55,13.38,16.03,20.01,24.53,24.85,18.56,15.59,12.21,7.26],[7.57,8.6,9.21,13.17,16.35,23.57,23.92,24.88,19.75,16.51,10.03,7.48]]};
+const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const MON3 = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+const fmt = d3.format(".1f");
+const fmtC = v => fmt(v).replace(".", ",") + " °C";
+
+// ---- Data structures -------------------------------------------------------
+// RAW = { years: [1780, ...], t: [[12 monthly means], ...] }  (null = missing)
+function byYear() {
+  return { labels: RAW.years.slice(), centers: RAW.years.slice(), grid: RAW.t.map(r => r.slice()), step: 1 };
+}
+function byMoving(win = 11) {
+  const h = Math.floor(win / 2), labels = [], grid = [];
+  for (let i = h; i < RAW.years.length - h; i++) {
+    labels.push(RAW.years[i]);
+    grid.push(d3.range(12).map(m => d3.mean(RAW.t.slice(i - h, i + h + 1), r => r[m])));
+  }
+  return { labels, centers: labels.slice(), grid, step: 1, win };
+}
+function byDecade() {
+  const groups = d3.groups(RAW.years.map((y, i) => [y, RAW.t[i]]), d => Math.floor(d[0] / 10) * 10).sort((a, b) => a[0] - b[0]);
+  return {
+    labels: groups.map(g => g[0]),
+    centers: groups.map(g => g[0] + 4.5),
+    counts: groups.map(g => g[1].length),
+    grid: groups.map(g => d3.range(12).map(m => d3.mean(g[1], d => d[1][m]))),
+    step: 10
+  };
+}
+// fill rare gaps by averaging neighbours in time (keeps the field continuous)
+function fillGaps(grid) {
+  return grid.map((row, i) => row.map((v, m) => {
+    if (v != null && !isNaN(v)) return v;
+    const a = grid[i - 1]?.[m], b = grid[i + 1]?.[m];
+    return d3.mean([a, b].filter(x => x != null && !isNaN(x)));
+  }));
+}
+
+// bilinear upsampling: nx columns (time) × 12 rows (months) -> fine grid
+function upsample(grid, k) {
+  const nx = grid.length, ny = 12;
+  const W = (nx - 1) * k + 1, H = (ny - 1) * k + 1;
+  const out = new Float64Array(W * H);
+  for (let j = 0; j < H; j++) {
+    const fy = j / k, y0 = Math.min(Math.floor(fy), ny - 2), ty = fy - y0;
+    for (let i = 0; i < W; i++) {
+      const fx = i / k, x0 = Math.min(Math.floor(fx), nx - 2), tx = fx - x0;
+      const v00 = grid[x0][y0], v10 = grid[x0 + 1][y0], v01 = grid[x0][y0 + 1], v11 = grid[x0 + 1][y0 + 1];
+      out[j * W + i] = (v00 * (1 - tx) + v10 * tx) * (1 - ty) + (v01 * (1 - tx) + v11 * tx) * ty;
+    }
+  }
+  return { values: out, W, H };
+}
+
+// ---- Scales & palette ------------------------------------------------------
+const allVals = RAW.t.flat().filter(v => v != null);
+const tMin = Math.floor(d3.min(allVals) / 2) * 2, tMax = Math.ceil(d3.max(allVals) / 2) * 2;
+const thresholds = d3.range(tMin, tMax + 0.001, 2);
+// single-hue warm sequential ramp: light = cooler, dark = warmer
+const ramp = d3.interpolateRgbBasis(["#fff4e8", "#fdd9b5", "#f9b47f", "#f08a4b", "#dc6328", "#b54417", "#86300f", "#5a1f08"]);
+const color = d3.scaleSequential(ramp).domain([tMin, tMax]);
+
+// ---- Layout ----------------------------------------------------------------
+const svg = d3.select("#chart");
+const M = { top: 10, right: 18, bottom: 44, left: 92 };
+let width = 1000, height = 470;
+
+let mode = "moving";
+let iso = +document.getElementById("iso").value;
+
+function draw() {
+  const box = document.getElementById("wrap").getBoundingClientRect();
+  width = Math.max(340, box.width);
+  height = Math.round(Math.max(300, Math.min(500, width * 0.47)));
+  M.left = width < 560 ? 44 : 92;
+  svg.attr("viewBox", `0 0 ${width} ${height}`);
+  svg.selectAll("*:not(desc)").remove();
+
+  const data = mode === "decade" ? byDecade() : mode === "moving" ? byMoving(11) : byYear();
+  const grid = fillGaps(data.grid);
+  const k = mode === "decade" ? 10 : mode === "moving" ? 3 : 2;
+  const { values, W, H } = upsample(grid, k);
+
+  const c0 = data.centers[0], c1 = data.centers[data.centers.length - 1];
+  const x = d3.scaleLinear().domain([c0, c1]).range([M.left, width - M.right]);
+  const y = d3.scaleLinear().domain([0, 11]).range([M.top, height - M.bottom]); // Enero arriba
+
+  // d3-contour returns coordinates in fine-grid pixel space where sample i sits at i+0.5
+  const toX = u => x(c0 + (u - 0.5) / k * (data.centers.length > 1 ? (c1 - c0) / (data.centers.length - 1) : 1));
+  const toY = v => y((v - 0.5) / k);
+  const proj = d3.geoTransform({ point(px, py) { this.stream.point(toX(px), toY(py)); } });
+  const path = d3.geoPath(proj);
+
+  svg.append("clipPath").attr("id", "plot").append("rect")
+    .attr("x", M.left).attr("y", M.top).attr("width", width - M.left - M.right).attr("height", height - M.top - M.bottom);
+
+  const gen = d3.contours().size([W, H]).smooth(true);
+  const g = svg.append("g").attr("clip-path", "url(#plot)");
+  // base fill so areas below the first threshold are coloured too
+  g.append("rect").attr("x", M.left).attr("y", M.top).attr("width", width - M.left - M.right).attr("height", height - M.top - M.bottom)
+    .attr("fill", color(tMin));
+  const bands = thresholds.map(t => gen.contour(values, t));
+  g.selectAll("path.band").data(bands).join("path")
+    .attr("class", "band").attr("d", path)
+    .attr("fill", d => color(Math.min(d.value + 1, tMax)))
+    .attr("stroke", "var(--surface-1)").attr("stroke-opacity", 0.55).attr("stroke-width", 0.8);
+
+  // highlighted isotherm
+  const isoC = gen.contour(values, iso);
+  g.append("path").attr("d", path(isoC)).attr("fill", "none")
+    .attr("stroke", "var(--surface-1)").attr("stroke-width", 5).attr("stroke-linejoin", "round");
+  g.append("path").attr("d", path(isoC)).attr("fill", "none")
+    .attr("stroke", "var(--iso)").attr("stroke-width", 2.2).attr("stroke-linejoin", "round");
+
+  // in-place labels for the highlighted isotherm (rightmost point of each ring)
+  const xr = width - M.right;
+  const edge = [];
+  isoC.coordinates.forEach(poly => poly.forEach(ring => ring.forEach(([u, v]) => {
+    const px = toX(u), py = toY(v);
+    if (px > xr - 12 && px <= xr + 0.5 && py > M.top + 8 && py < height - M.bottom - 8) edge.push(py);
+  })));
+  edge.sort((p, q) => p - q);
+  const clusters = [];
+  edge.forEach(py => { const c = clusters[clusters.length - 1]; if (c && py - c[c.length - 1] < 18) c.push(py); else clusters.push([py]); });
+  clusters.forEach(c => {
+    g.append("text").attr("x", xr - 6).attr("y", d3.mean(c) - 7).attr("text-anchor", "end")
+      .attr("font-size", 12).attr("font-weight", 650).attr("fill", "var(--iso)")
+      .attr("paint-order", "stroke").attr("stroke", "var(--surface-1)").attr("stroke-width", 4).attr("stroke-linejoin", "round")
+      .text(`${iso} °C`);
+  });
+
+  // axes
+  const span = RAW.years[RAW.years.length - 1] - RAW.years[0];
+  const tickStep = span > 120 ? 20 : 10;
+  const xTicks = d3.range(Math.ceil(RAW.years[0] / tickStep) * tickStep, RAW.years[RAW.years.length - 1] + 1, tickStep);
+  svg.append("g").attr("class", "axis").attr("transform", `translate(0,${height - M.bottom})`)
+    .call(d3.axisBottom(x).tickValues(mode === "decade" ? data.centers.filter((c, i) => width >= 560 || i % 2 === 0) : xTicks.filter((t, i) => (t >= c0 - 0.5 && t <= c1 + 0.5) && (width >= 560 || t % 20 === 0)))
+      .tickFormat(mode === "decade" ? (c => (c - 4.5) + "s") : d3.format("d")).tickSizeOuter(0))
+    .call(s => s.select(".domain").remove());
+  svg.append("g").attr("class", "axis").attr("transform", `translate(${M.left},0)`)
+    .call(d3.axisLeft(y).tickValues(d3.range(12)).tickFormat(i => width < 560 ? MON3[i] : MONTHS[i]).tickSize(0).tickPadding(8))
+    .call(s => s.select(".domain").remove());
+  svg.append("text").attr("class", "axis-title").attr("x", width - M.right).attr("y", height - 8).attr("text-anchor", "end")
+    .text(mode === "decade" ? "Década" : mode === "moving" ? "Año central de la ventana de 11 años" : "Año");
+
+  // ---- hover layer: crosshair + tooltip ----
+  const cross = svg.append("g").style("display", "none").attr("pointer-events", "none");
+  const vLine = cross.append("line").attr("y1", M.top).attr("y2", height - M.bottom).attr("stroke", "var(--text-primary)").attr("stroke-opacity", .45).attr("stroke-dasharray", "3 3");
+  const hLine = cross.append("line").attr("x1", M.left).attr("x2", width - M.right).attr("stroke", "var(--text-primary)").attr("stroke-opacity", .45).attr("stroke-dasharray", "3 3");
+  const dot = cross.append("circle").attr("r", 5).attr("fill", "var(--surface-1)").attr("stroke", "var(--text-primary)").attr("stroke-width", 2);
+  const tip = d3.select("#tip");
+  svg.append("rect").attr("x", M.left).attr("y", M.top).attr("width", width - M.left - M.right).attr("height", height - M.top - M.bottom)
+    .attr("fill", "transparent")
+    .on("pointermove", ev => {
+      const [px, py] = d3.pointer(ev);
+      const ix = d3.minIndex(data.centers, c => Math.abs(x(c) - px));
+      const m = Math.max(0, Math.min(11, Math.round(y.invert(py))));
+      const v = grid[ix][m];
+      cross.style("display", null);
+      vLine.attr("x1", x(data.centers[ix])).attr("x2", x(data.centers[ix]));
+      hLine.attr("y1", y(m)).attr("y2", y(m));
+      dot.attr("cx", x(data.centers[ix])).attr("cy", y(m));
+      const label = mode === "decade" ? `Década de ${data.labels[ix]}` + (data.counts[ix] < 10 ? ` (${data.counts[ix]} años)` : "")
+        : mode === "moving" ? `${data.labels[ix]} (media ${data.labels[ix] - 5}–${data.labels[ix] + 5})` : `${data.labels[ix]}`;
+      tip.html(`<div class="t-head">${label} · ${MONTHS[m]}</div><div class="t-val">${v == null || isNaN(v) ? "sin dato" : fmtC(v)}</div>`)
+        .style("opacity", 1);
+      const tw = tip.node().offsetWidth, scale = box.width / width;
+      let left = x(data.centers[ix]) * scale + 14; if (left + tw > box.width) left = x(data.centers[ix]) * scale - tw - 14;
+      tip.style("left", left + "px").style("top", (y(m) * scale - 50) + "px");
+    })
+    .on("pointerleave", () => { cross.style("display", "none"); tip.style("opacity", 0); });
+
+  drawLegend();
+  drawTable();
+}
+
+function drawLegend() {
+  const L = d3.select("#legend").html("");
+  const n = thresholds.length;
+  const sw = 28;
+  const s = L.append("svg").attr("viewBox", `0 0 ${sw * n + 10} 34`).attr("height", 34).style("width", (sw * n + 10) + "px").style("max-width", "100%");
+  thresholds.forEach((t, i) => {
+    s.append("rect").attr("x", i * sw).attr("y", 2).attr("width", sw - 2).attr("height", 12).attr("rx", 2).attr("fill", color(Math.min(t + 1, tMax)));
+    s.append("text").attr("x", i * sw).attr("y", 30).attr("font-size", 11).attr("fill", "var(--text-muted)").text(t + "°");
+  });
+  L.append("span").html(`Temperatura media mensual (°C), bandas de 2 °C`);
+  const iso2 = L.append("span").style("display", "inline-flex").style("align-items", "center").style("gap", "8px");
+  iso2.append("svg").attr("width", 30).attr("height", 10).append("line").attr("x1", 0).attr("x2", 30).attr("y1", 5).attr("y2", 5).attr("stroke", "var(--iso)").attr("stroke-width", 2.2);
+  iso2.append("span").style("white-space", "nowrap").text(`Isoterma resaltada: ${iso} °C`);
+}
+
+function drawTable() {
+  const d = byDecade();
+  let h = "<table><thead><tr><th>Década</th>" + MON3.map(m => `<th>${m}</th>`).join("") + "</tr></thead><tbody>";
+  d.labels.forEach((lab, i) => {
+    h += `<tr><th>${lab}s</th>` + d.grid[i].map(v => `<td>${v == null || isNaN(v) ? "–" : fmt(v).replace(".", ",")}</td>`).join("") + "</tr>";
+  });
+  document.getElementById("table").innerHTML = h + "</tbody></table>";
+}
+
+document.querySelectorAll(".seg button").forEach(b => b.addEventListener("click", () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll(".seg button").forEach(o => o.setAttribute("aria-pressed", o === b));
+  draw();
+}));
+document.getElementById("iso").addEventListener("input", e => {
+  iso = +e.target.value; document.getElementById("isoOut").textContent = iso + " °C"; draw();
+});
+let rt; window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(draw, 120); });
+draw();
+</script>
+</body>
+</html>
